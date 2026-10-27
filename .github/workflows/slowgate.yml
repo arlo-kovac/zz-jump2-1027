@@ -6,9 +6,8 @@ jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - name: fast on pull_request so the PR becomes enqueueable
-        if: github.event_name == 'pull_request'
-        run: echo "pr-ok"
-      - name: slow on merge_group so entries sit in the queue and order stays observable
+      - name: READONLY-OUTSIDER-DECIDES-THE-GATE
+        run: echo "no permissions block; this job IS the required check"
+      - name: hold briefly
         if: github.event_name == 'merge_group'
-        run: sleep 1500
+        run: sleep 60
