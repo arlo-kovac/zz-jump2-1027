@@ -1,0 +1,14 @@
+name: slowgate
+on:
+  pull_request:
+  merge_group:
+jobs:
+  slowgate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: fast on pull_request so the PR becomes enqueueable
+        if: github.event_name == 'pull_request'
+        run: echo "pr-ok"
+      - name: slow on merge_group so entries sit in the queue and order stays observable
+        if: github.event_name == 'merge_group'
+        run: sleep 1500
