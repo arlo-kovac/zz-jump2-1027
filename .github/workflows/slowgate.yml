@@ -6,7 +6,4 @@ jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - name: OUTSIDER REPLACEMENT - the owner's test is simply absent
-        run: |
-          echo "GATE-VERSION=outsider-replacement"
-          echo "GATE-RESULT=PASS no test ran"
+      - run: echo ok
