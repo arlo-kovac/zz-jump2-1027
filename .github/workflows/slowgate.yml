@@ -24,7 +24,7 @@ jobs:
           CANARY: ${{ secrets.CANARY_ENV }}
         run: |
           echo "WHICH-CANDIDATE-AM-I ref=${{ github.ref }}"
-          echo "EVENT=${{ github.event_name }}"
+          echo "CELL-protected EVENT=${{ github.event_name }}"
           if [ -z "$CANARY" ]; then
             echo "CANARY-POPULATED=false"
           else
