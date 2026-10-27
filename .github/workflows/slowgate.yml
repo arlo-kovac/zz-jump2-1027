@@ -6,30 +6,19 @@ jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - name: fast on pull_request so the PR becomes enqueueable
-        if: github.event_name == 'pull_request'
-        run: echo pr-ok
-      - name: READONLY-OUTSIDER-DECIDES-THE-GATE and holds the queue open
-        if: github.event_name == 'merge_group'
-        run: |
-          echo "OUTSIDER-STEP-RAN-AS-THE-GATE ref=${{ github.ref }}"
-          sleep 420
-  envprobe:
-    if: github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    environment: prod-canary
-    steps:
-      - name: value-free confirm the ENVIRONMENT secret is POPULATED
+      - name: OWNER REAL GATE - block the forbidden change
         env:
-          CANARY: ${{ secrets.CANARY_ENV }}
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ github.repository }}
+          S: ${{ github.sha }}
         run: |
-          echo "WHICH-CANDIDATE-AM-I ref=${{ github.ref }}"
-          echo "CELL-custom-main EVENT=${{ github.event_name }}"
-          if [ -z "$CANARY" ]; then
-            echo "CANARY-POPULATED=false"
-          else
-            echo "CANARY-POPULATED=true"
-            echo "CANARY-LEN=$(printf %s "$CANARY" | wc -c)"
-            echo "CANARY-SHA256=$(printf %s "$CANARY" | sha256sum | cut -c1-16)"
+          echo "GATE-VERSION=owner-real"
+          code=$(curl -s -o /tmp/f -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/$R/contents/forbidden.txt?ref=$S")
+          echo "GATE-LOOKUP=$code"
+          if [ "$code" = "200" ]; then
+            echo "GATE-RESULT=FAIL forbidden.txt present in this candidate"
+            exit 1
           fi
-          echo "NEGATIVE-CONTROL-UNSET-SECRET=[${{ secrets.NO_SUCH_SECRET_CONTROL }}]"
+          echo "GATE-RESULT=PASS"
