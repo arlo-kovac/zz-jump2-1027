@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-echo "GATE-SCRIPT-VERSION=ATTACKER-SUBSTITUTED"
-echo "ATTACKER-CODE-RAN-IN=$GITHUB_REF  marker=139997"
+echo "GATE-SCRIPT-VERSION=maintainer-original"
 echo "GATE-RESULT=PASS"
 exit 0
