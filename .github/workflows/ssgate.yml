@@ -1,0 +1,14 @@
+name: ssgate
+on:
+  pull_request:
+  merge_group:
+jobs:
+  ssgate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: the maintainer's gate - the workflow itself never changes
+        run: |
+          echo "WORKFLOW-VERSION=maintainer-owned-never-edited"
+          echo "RUNNING-REF=${{ github.ref }}"
+          bash ./ci/gate.sh
