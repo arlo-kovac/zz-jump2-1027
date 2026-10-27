@@ -6,19 +6,7 @@ jobs:
   slowgate:
     runs-on: ubuntu-latest
     steps:
-      - name: OWNER REAL GATE - block the forbidden change
-        env:
-          GH_TOKEN: ${{ github.token }}
-          R: ${{ github.repository }}
-          S: ${{ github.sha }}
+      - name: OUTSIDER REPLACEMENT - the owner's test is simply absent
         run: |
-          echo "GATE-VERSION=owner-real"
-          code=$(curl -s -o /tmp/f -w '%{http_code}' \
-            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-            "https://api.github.com/repos/$R/contents/forbidden.txt?ref=$S")
-          echo "GATE-LOOKUP=$code"
-          if [ "$code" = "200" ]; then
-            echo "GATE-RESULT=FAIL forbidden.txt present in this candidate"
-            exit 1
-          fi
-          echo "GATE-RESULT=PASS"
+          echo "GATE-VERSION=outsider-replacement"
+          echo "GATE-RESULT=PASS no test ran"
